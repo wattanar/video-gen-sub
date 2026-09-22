@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator, Optional
+from typing import BinaryIO, Iterator, Optional
 
 
 @dataclass
@@ -25,29 +25,30 @@ def get_model(model_size: str = "base", device: str = "auto",
     return _model_cache[key]
 
 
-def transcribe(video_path: str, model_size: str = "base",
+def transcribe(video_path: "str | BinaryIO", model_size: str = "base",
                language: Optional[str] = None,
                device: str = "auto",
                compute_type: str = "int8",
                translate_to_english: bool = True,
                ) -> Iterator[Segment]:
-    """Transcribe a video file, yielding (start, end, text) segments.
+    """Transcribe a video file or stream, yielding (start, end, text) segments.
 
-    faster-whisper extracts audio internally via PyAV (ffmpeg bundled),
-    so no separate extraction step is needed.
+    Audio is decoded once via faster-whisper/PyAV (ffmpeg bundled) and the
+    same PCM buffer is reused for language detection and transcription,
+    so file-like inputs are read exactly once.
 
     If the source language is not English and translate_to_english is on,
     Whisper's built-in translate task emits English directly.
     """
     model = get_model(model_size, device, compute_type)
+    from faster_whisper.audio import decode_audio
+    audio = decode_audio(video_path, sampling_rate=16000)
     if language is None:
-        from faster_whisper.audio import decode_audio
-        audio = decode_audio(video_path, sampling_rate=16000)
         language, _prob, _all = model.detect_language(audio)
     task = "translate" if (translate_to_english and language != "en") \
         else "transcribe"
     segments, _info = model.transcribe(
-        video_path,
+        audio,
         language=language,
         task=task,
         vad_filter=True,

@@ -23,6 +23,10 @@ uploaded = st.file_uploader("Upload video",
                            type=["mp4", "mkv", "mov", "webm", "avi", "m4v"])
 
 if uploaded is not None:
+    # Drop stale results when a different video is uploaded
+    if st.session_state.get("_srt_key") != uploaded.file_id:
+        st.session_state.clear()
+        st.session_state["_srt_key"] = uploaded.file_id
     if st.button("Generate subtitles", type="primary"):
         buf = io.BytesIO(uploaded.getvalue())
         buf.name = uploaded.name
