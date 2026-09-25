@@ -1,8 +1,9 @@
 # video-gen-sub
 
 Generate `.srt` subtitles from video files. Local transcription with
-[faster-whisper](https://github.com/SYSTRAN/faster-whisper) — no API key,
-audio extraction handled internally via PyAV (no system ffmpeg dependency).
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp) — no API key. Audio
+extraction is handled by PyAV (no system ffmpeg dependency). Runs on CPU or
+AMD GPU via the Vulkan backend (`radv`).
 
 Non-English speech is automatically translated to English in the same pass
 (Whisper `translate` task).
@@ -10,11 +11,14 @@ Non-English speech is automatically translated to English in the same pass
 ## Setup
 
 ```bash
-make venv        # or: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+make venv      # python3 -m venv .venv
+make install   # pip install -r requirements.txt
+make whisper   # build whisper.cpp with -DGGML_VULKAN=ON (~few minutes, one-time)
 ```
 
-Model weights download on first run (~74 MB `base`, ~460 MB `small`,
-~1.5 GB `medium`). Set `HF_TOKEN` to avoid rate limits.
+`make whisper` clones `whisper.cpp` into `.whisper-cpp/` and builds
+`whisper-cli` with the Vulkan backend. Rebuilds are skipped if the binary
+already exists.
 
 ## CLI
 
@@ -22,24 +26,28 @@ Model weights download on first run (~74 MB `base`, ~460 MB `small`,
 make run VIDEO=video.mp4
 # equivalent:
 .venv/bin/python app.py video.mp4 [-o out.srt] [-m tiny|base|small|medium|large-v3]
-                                  [-l th] [--device cuda] [--no-translate]
+                                  [-l th] [--device auto|cpu|vulkan] [--no-translate]
 ```
 
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `-o` | `<video>.srt` | Output path |
-| `-m` | `base` | Model size (bigger = more accurate) |
+| `-m` | `base` | Whisper model size (bigger = more accurate) |
 | `-l` | auto-detect | Source language code, e.g. `ja`, `th`, `en` |
-| `--device` | `auto` | `cpu` / `cuda` / `auto` |
+| `--device` | `auto` | `cpu` / `vulkan` / `auto` (Vulkan GPU if available, else CPU) |
 | `--no-translate` | off | Keep original language instead of English output |
+
+Models (ggml format) download on first use into `./models/`
+(~74 MB `tiny`, ~148 MB `base`, ~466 MB `small`, ~1.5 GB `medium`) plus the
+~0.9 MB silero VAD model.
 
 ## Web UI
 
 ```bash
-make serve       # .venv/bin/streamlit run ui.py → http://localhost:8501
+make serve     # streamlit run ui.py → http://localhost:8501
 ```
 
-Upload a video, pick model / language / translate, download the `.srt`.
+Upload a video, pick model / language / device / translate, download the `.srt`.
 
 ## Output format
 
@@ -50,13 +58,17 @@ UTF-8 text.
 
 - `base` is too weak for many languages (e.g. Japanese); use `small` or
   `medium` for non-English content.
-- On CPU, `medium` processes ~60 s of audio in a few minutes; use `cuda`
-  for large batches.
-- VAD filtering is enabled, so silent gaps produce no segments.
+- Silero VAD is enabled, so silent gaps produce no segments.
+- whisper-cli reloads the model on each run (~1 s); fine for one-shot
+  subtitle generation.
+- Progress: the CLI prints a percentage, the web UI shows a progress bar
+  (updates per completed segment).
 
 ## Layout
 
-- `transcriber.py` — transcription pipeline + SRT writer
+- `transcriber.py` — PyAV decode + whisper-cli subprocess + SRT writer
 - `app.py` — CLI entry point
 - `ui.py` — Streamlit web UI
 - `check.py` — SRT writer sanity checks (`make check`)
+- `models/` — downloaded ggml models (gitignored)
+- `.whisper-cpp/` — whisper.cpp build (gitignored)

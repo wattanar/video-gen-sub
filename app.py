@@ -23,8 +23,8 @@ def main() -> None:
                    help="Language code e.g. 'th', 'en' (default: auto-detect)")
     p.add_argument("--no-translate", action="store_true",
                    help="Keep original language (default: translate non-English to English)")
-    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
-                   help="Inference device (default: auto)")
+    p.add_argument("--device", default="auto", choices=["auto", "cpu", "vulkan"],
+                   help="Inference device (default: auto = Vulkan if available)")
     args = p.parse_args()
 
     if not pathlib.Path(args.video).is_file():
@@ -32,11 +32,14 @@ def main() -> None:
 
     out = args.output or str(pathlib.Path(args.video).with_suffix(".srt"))
     print(f"Transcribing {args.video} (model={args.model}, "
-          f"lang={args.language or 'auto'}, "
+          f"device={args.device}, lang={args.language or 'auto'}, "
           f"translate={'no' if args.no_translate else 'yes'}) ...")
     video_to_srt(args.video, out, model_size=args.model,
                  language=args.language, device=args.device,
-                 translate_to_english=not args.no_translate)
+                 translate_to_english=not args.no_translate,
+                 progress_callback=lambda p: print(
+                     f"\r  {p * 100:3.0f}%", end="", flush=True))
+    print()
     print(f"Wrote {out}")
 
 

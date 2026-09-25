@@ -16,7 +16,7 @@ st.title("Video to SRT")
 with st.sidebar:
     model_size = st.selectbox("Model", MODELS, index=1)
     language = st.text_input("Language code (blank = auto-detect)", "")
-    device = st.selectbox("Device", ["auto", "cpu", "cuda"])
+    device = st.selectbox("Device", ["auto", "cpu", "vulkan"])
     translate = st.checkbox("Translate to English", value=True)
 
 uploaded = st.file_uploader("Upload video",
@@ -30,11 +30,17 @@ if uploaded is not None:
     if st.button("Generate subtitles", type="primary"):
         buf = io.BytesIO(uploaded.getvalue())
         buf.name = uploaded.name
+        bar = st.progress_bar(0.0)
+
+        def update(p):  # p: 0.0-1.0
+            bar.progress(min(1.0, p), text=f"Transcribing {p * 100:.0f}%")
+
         with st.spinner("Transcribing ..."):
             segments = list(transcribe(buf, model_size=model_size,
                                        language=language or None,
                                        device=device,
-                                       translate_to_english=translate))
+                                       translate_to_english=translate,
+                                       progress_callback=update))
         st.session_state.srt = segments_to_srt(segments)
 
 if srt := st.session_state.get("srt"):
